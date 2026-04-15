@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Macetero Smart V3</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #e9ecef; color: #333; text-align: center; padding: 20px; }
+        .card { background: white; max-width: 400px; margin: 0 auto; padding: 30px 20px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; margin-top: 0; font-size: 1.8em;}
+        .humedad-box { background-color: #f8f9fa; border-radius: 10px; padding: 20px; margin: 20px 0; }
+        .humedad-valor { font-size: 3.5em; color: #3498db; font-weight: bold; margin: 0; }
+        .control-group { border-top: 1px solid #eee; margin-top: 20px; padding-top: 15px; text-align: left; }
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        strong { color: #555; }
+        input[type="range"] { width: 100%; margin-top: 10px; }
+        input[type="time"] { padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-family: inherit; font-size: 0.9em;}
+        select { padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-weight: bold;}
+        .btn { padding: 12px 30px; border: none; border-radius: 8px; font-size: 1em; font-weight: bold; cursor: pointer; transition: 0.2s; width: 45%; text-align: center;}
+        .btn-on { background-color: #2ecc71; color: white; box-shadow: 0 4px 0 #27ae60; }
+        .btn-off { background-color: #e74c3c; color: white; box-shadow: 0 4px 0 #c0392b; }
+        .btn:active { transform: translateY(4px); box-shadow: none; }
+        .btn:disabled { background-color: #bdc3c7; box-shadow: none; cursor: not-allowed; }
+        .status { font-size: 0.8em; color: #7f8c8d; margin-top: 25px; text-align: center; }
+        .horarios { background: #fdfaf6; padding: 15px; border-radius: 8px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🌱 Planta Smart</h1>
+    
+    <div class="humedad-box">
+        <h3 style="margin-top: 0; color: #555;">Humedad Actual</h3>
+        <p class="humedad-valor" id="valorHumedad">--%</p>
+    </div>
+
+    <div class="control-group">
+        <div class="row">
+            <strong>Bomba de Agua</strong>
+            <select id="modeBomba" onchange="enviarConfiguracion()">
+                <option value="false">Manual</option>
+                <option value="true">Automático</option>
+            </select>
+        </div>
+        <div class="row" style="justify-content: center;">
+            <button id="btnBomba" class="btn btn-off" onclick="toggleDispositivo('bom')">APAGADA</button>
+        </div>
+        <div class="horarios">
+            <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #666;">
+                En Auto, regar si humedad baja de: <strong id="umbTxt">40</strong><strong>%</strong>
+            </p>
+            <input type="range" id="umbRange" min="0" max="100" value="40" onchange="enviarConfiguracion()">
+        </div>
+    </div>
+
+    <div class="control-group" style="margin-top: 30px;">
+        <div class="row">
+            <strong>Luz RGB</strong>
+            <select id="modeLuz" onchange="enviarConfiguracion()">
+                <option value="false">Manual</option>
+                <option value="true">Automático</option>
+            </select>
+        </div>
+        <div class="row" style="justify-content: center;">
+            <button id="btnLuz" class="btn btn-off" onclick="toggleDispositivo('luz')">APAGADA</button>
+        </div>
+        <div class="horarios">
+            <div class="row" style="margin-bottom: 10px;">
+                <span style="font-size: 0.9em; color: #555;">Encender a las:</span>
+                <input type="time" id="timeLuzOn" onchange="enviarConfiguracion()">
+            </div>
+            <div class="row" style="margin-bottom: 0;">
+                <span style="font-size: 0.9em; color: #555;">Apagar a las:</span>
+                <input type="time" id="timeLuzOff" onchange="enviarConfiguracion()">
+            </div>
+        </div>
+    </div>
+    
+    <p class="status" id="estadoConexion">Conectando a Firebase...</p>
+</div>
+
+<script>
+    const FIREBASE_URL = "https://panel-vfd-monitor-default-rtdb.firebaseio.com/macetero_1.json";
+    
+    // Añadimos las variables de la luz automática
+    let estadoGlobal = { 
+        bom: false, luz: false, 
+        autoB: false, umb: 40, 
+        autoL: false, hLuzOn: 18, mLuzOn: 0, hLuzOff: 22, mLuzOff: 0 
+    };
+
+    async function obtenerDatos() {
+        try {
+            const response = await fetch(FIREBASE_URL);
+            const data = await response.json();
+            
+            if (data) {
+                estadoGlobal = { ...estadoGlobal, ...data };
+
+                document.getElementById('valorHumedad').innerText = (data.hum || 0) + "%";
+                document.getElementById('umbTxt').innerText = estadoGlobal.umb;
+                
+                // Actualizar selectores
+                document.getElementById('modeBomba').value = estadoGlobal.autoB.toString();
+                document.getElementById('modeLuz').value = estadoGlobal.autoL.toString();
+                document.getElementById('umbRange').value = estadoGlobal.umb;
+                
+                // Formatear horas
+                const formatTime = (h, m) => `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                
+                if(document.activeElement !== document.getElementById('timeLuzOn')) {
+                    document.getElementById('timeLuzOn').value = formatTime(estadoGlobal.hLuzOn, estadoGlobal.mLuzOn);
+                }
+                if(document.activeElement !== document.getElementById('timeLuzOff')) {
+                    document.getElementById('timeLuzOff').value = formatTime(estadoGlobal.hLuzOff, estadoGlobal.mLuzOff);
+                }
+
+                actualizarBotones();
+                document.getElementById('estadoConexion').innerText = "Última sincronización: " + new Date().toLocaleTimeString();
+            }
+        } catch (error) { document.getElementById('estadoConexion').innerText = "⚠️ Error de conexión"; }
+    }
+
+    async function toggleDispositivo(dispositivo) {
+        estadoGlobal[dispositivo] = !estadoGlobal[dispositivo];
+        const bodyData = {}; bodyData[dispositivo] = estadoGlobal[dispositivo];
+        try { await fetch(FIREBASE_URL, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyData) }); actualizarBotones(); } catch (e) {}
+    }
+
+    async function enviarConfiguracion() {
+        estadoGlobal.autoB = document.getElementById('modeBomba').value === 'true';
+        estadoGlobal.autoL = document.getElementById('modeLuz').value === 'true';
+        estadoGlobal.umb = parseInt(document.getElementById('umbRange').value);
+        
+        const tOn = document.getElementById('timeLuzOn').value.split(':');
+        if(tOn.length === 2) { estadoGlobal.hLuzOn = parseInt(tOn[0]); estadoGlobal.mLuzOn = parseInt(tOn[1]); }
+        
+        const tOff = document.getElementById('timeLuzOff').value.split(':');
+        if(tOff.length === 2) { estadoGlobal.hLuzOff = parseInt(tOff[0]); estadoGlobal.mLuzOff = parseInt(tOff[1]); }
+
+        document.getElementById('umbTxt').innerText = estadoGlobal.umb;
+        
+        const bodyData = { 
+            autoB: estadoGlobal.autoB, autoL: estadoGlobal.autoL, umb: estadoGlobal.umb, 
+            hLuzOn: estadoGlobal.hLuzOn, mLuzOn: estadoGlobal.mLuzOn,
+            hLuzOff: estadoGlobal.hLuzOff, mLuzOff: estadoGlobal.mLuzOff
+        };
+        try { await fetch(FIREBASE_URL, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyData) }); actualizarBotones(); } catch (e) {}
+    }
+
+    function actualizarBotones() {
+        const btnBomba = document.getElementById('btnBomba');
+        btnBomba.className = estadoGlobal.bom ? "btn btn-on" : "btn btn-off";
+        btnBomba.innerText = estadoGlobal.bom ? "ON" : "OFF";
+        btnBomba.disabled = estadoGlobal.autoB; 
+
+        const btnLuz = document.getElementById('btnLuz');
+        btnLuz.className = estadoGlobal.luz ? "btn btn-on" : "btn btn-off";
+        btnLuz.innerText = estadoGlobal.luz ? "ON" : "OFF";
+        btnLuz.disabled = estadoGlobal.autoL; 
+    }
+
+    obtenerDatos();
+    setInterval(obtenerDatos, 3000);
+</script>
+</body>
+</html>
